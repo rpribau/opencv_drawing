@@ -3,30 +3,6 @@ import cv2
 import numpy as np
 from PIL import Image
 import os
-
-# Monkeypatch para compatibilidad con Streamlit 1.51.0+
-import streamlit.elements.image
-from streamlit.elements.lib import image_utils
-
-# Guardar la función original
-original_image_to_url = image_utils.image_to_url
-
-# Clase mock para LayoutConfig
-class MockLayoutConfig:
-    def __init__(self, width):
-        self.width = width
-
-# Wrapper para adaptar la llamada antigua a la nueva API
-def image_to_url_wrapper(image, width, clamp, channels, output_format, image_id):
-    if isinstance(width, int):
-        config = MockLayoutConfig(width)
-        return original_image_to_url(image, config, clamp, channels, output_format, image_id)
-    else:
-        return original_image_to_url(image, width, clamp, channels, output_format, image_id)
-
-# Aplicar el monkeypatch
-streamlit.elements.image.image_to_url = image_to_url_wrapper
-
 from streamlit_drawable_canvas import st_canvas
 
 # --- CONFIGURACIÓN ---
