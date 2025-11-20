@@ -1,4 +1,4 @@
-# OpenCV Drawer
+# OpenCV Drawing
 
 ![Alt text](images/image.png "Main Screen")
 
