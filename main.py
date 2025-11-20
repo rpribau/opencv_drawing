@@ -20,6 +20,8 @@ if "img_array" not in st.session_state:
     st.session_state["img_array"] = None
 if "canvas_dims" not in st.session_state:
     st.session_state["canvas_dims"] = (320, 240)
+if "last_file_id" not in st.session_state:
+    st.session_state["last_file_id"] = None
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -32,8 +34,11 @@ with st.sidebar:
 
     # --- ESTRATEGIA: GUARDAR ARRAY EN SESSION STATE ---
     if uploaded_file is not None:
-        # Verificamos si las dimensiones cambiaron o es una imagen nueva
-        if st.session_state["canvas_dims"] != (c_width, c_height) or st.session_state["img_array"] is None:
+        # Verificamos si las dimensiones cambiaron, es una imagen nueva, o el archivo cambió
+        current_file_id = uploaded_file.file_id
+        if (st.session_state["canvas_dims"] != (c_width, c_height) or 
+            st.session_state["img_array"] is None or
+            st.session_state["last_file_id"] != current_file_id):
             try:
                 uploaded_file.seek(0)
                 img_input = Image.open(uploaded_file).convert("RGB")
@@ -42,9 +47,15 @@ with st.sidebar:
                 # GUARDAMOS EL ARRAY NUMPY en session_state
                 st.session_state["img_array"] = np.array(img_resized)
                 st.session_state["canvas_dims"] = (c_width, c_height)
+                st.session_state["last_file_id"] = current_file_id
                 
             except Exception as e:
                 st.error(f"Error procesando imagen: {e}")
+    else:
+        # Si no hay archivo cargado, limpiar la imagen
+        if st.session_state["last_file_id"] is not None:
+            st.session_state["img_array"] = None
+            st.session_state["last_file_id"] = None
 
     # Preview desde el array en memoria
     if st.session_state["img_array"] is not None:
@@ -66,12 +77,13 @@ st.subheader(f"Lienzo ({c_width}x{c_height})")
 bg_image_obj = None
 if st.session_state["img_array"] is not None:
     # Reconstruimos el objeto PIL desde el array numpy
-    bg_image_obj = Image.fromarray(st.session_state["img_array"])
+    # Usando .copy() para asegurar que sea un objeto fresco y evitar problemas de caché
+    bg_image_obj = Image.fromarray(st.session_state["img_array"].copy())
 else:
     # Fondo negro si no hay imagen
     bg_image_obj = Image.new("RGB", (c_width, c_height), (0,0,0))
 
-key = f"cv_v14_{c_width}x{c_height}_{mode}_{st.session_state.get('reset_counter', 0)}"
+key = f"cv_v14_{c_width}x{c_height}_{mode}_{st.session_state.get('reset_counter', 0)}_{st.session_state.get('last_file_id', 'noimg')}"
 
 with st.container(border=True):
     col_c = st.columns([1, 5, 1])[1]
