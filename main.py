@@ -16,8 +16,10 @@ def hex_to_bgr(hex_color):
     return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))[::-1]
 
 # --- ESTADO DE SESIÓN ---
-if "file_path" not in st.session_state:
-    st.session_state["file_path"] = None
+if "img_array" not in st.session_state:
+    st.session_state["img_array"] = None
+if "canvas_dims" not in st.session_state:
+    st.session_state["canvas_dims"] = (320, 240)
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -28,30 +30,25 @@ with st.sidebar:
     st.divider()
     uploaded_file = st.file_uploader("Cargar Imagen", type=["png", "jpg", "jpeg"])
 
-    # --- ESTRATEGIA: GUARDADO FÍSICO EN DISCO ---
+    # --- ESTRATEGIA: GUARDAR ARRAY EN SESSION STATE ---
     if uploaded_file is not None:
-        # Creamos un nombre de archivo único basado en las dimensiones
-        temp_filename = f"temp_canvas_bg_{c_width}_{c_height}.png"
-        
-        # Verificamos si ya lo procesamos para no repetir
-        if st.session_state["file_path"] != temp_filename:
+        # Verificamos si las dimensiones cambiaron o es una imagen nueva
+        if st.session_state["canvas_dims"] != (c_width, c_height) or st.session_state["img_array"] is None:
             try:
                 uploaded_file.seek(0)
                 img_input = Image.open(uploaded_file).convert("RGB")
                 img_resized = img_input.resize((c_width, c_height))
                 
-                # GUARDAMOS EL ARCHIVO EN EL SERVIDOR (Esto soluciona el bug de la nube)
-                img_resized.save(temp_filename, format="PNG")
-                
-                # Guardamos la RUTA, no la imagen en memoria
-                st.session_state["file_path"] = temp_filename
+                # GUARDAMOS EL ARRAY NUMPY en session_state
+                st.session_state["img_array"] = np.array(img_resized)
+                st.session_state["canvas_dims"] = (c_width, c_height)
                 
             except Exception as e:
-                st.error(f"Error guardando archivo: {e}")
+                st.error(f"Error procesando imagen: {e}")
 
-    # Preview leyendo desde el disco para confirmar
-    if st.session_state["file_path"] and os.path.exists(st.session_state["file_path"]):
-        st.image(st.session_state["file_path"], caption="Leído desde Disco OK", use_column_width=True)
+    # Preview desde el array en memoria
+    if st.session_state["img_array"] is not None:
+        st.image(st.session_state["img_array"], caption="Imagen cargada", use_column_width=True)
 
     st.divider()
     mode = st.radio("Herramienta:", ("point", "rect", "circle"),
@@ -65,16 +62,16 @@ with st.sidebar:
 # --- LIENZO ---
 st.subheader(f"Lienzo ({c_width}x{c_height})")
 
-# Preparamos la imagen de fondo
+# Preparamos la imagen de fondo desde el array en session_state
 bg_image_obj = None
-if st.session_state["file_path"] and os.path.exists(st.session_state["file_path"]):
-    # Abrimos la imagen fresca desde el disco justo antes de pasarla al canvas
-    bg_image_obj = Image.open(st.session_state["file_path"])
+if st.session_state["img_array"] is not None:
+    # Reconstruimos el objeto PIL desde el array numpy
+    bg_image_obj = Image.fromarray(st.session_state["img_array"])
 else:
     # Fondo negro si no hay imagen
     bg_image_obj = Image.new("RGB", (c_width, c_height), (0,0,0))
 
-key = f"cv_v13_{st.session_state['file_path']}_{mode}_{st.session_state.get('reset_counter', 0)}"
+key = f"cv_v14_{c_width}x{c_height}_{mode}_{st.session_state.get('reset_counter', 0)}"
 
 with st.container(border=True):
     col_c = st.columns([1, 5, 1])[1]
@@ -83,7 +80,7 @@ with st.container(border=True):
             fill_color="rgba(0,0,0,0)",
             stroke_width=stroke if mode != "point" else 5,
             stroke_color=color,
-            background_image=bg_image_obj, # Pasamos el objeto recién abierto
+            background_image=bg_image_obj,
             update_streamlit=True,
             height=c_height,
             width=c_width,
