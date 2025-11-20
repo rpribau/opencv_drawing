@@ -2,6 +2,7 @@ import streamlit as st
 import cv2
 import numpy as np
 from PIL import Image
+import os
 from streamlit_drawable_canvas import st_canvas
 
 # --- CONFIGURACIÓN ---
@@ -15,10 +16,8 @@ def hex_to_bgr(hex_color):
     return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))[::-1]
 
 # --- ESTADO DE SESIÓN ---
-if "bg_image" not in st.session_state:
-    st.session_state["bg_image"] = None
-if "file_id" not in st.session_state:
-    st.session_state["file_id"] = ""
+if "file_path" not in st.session_state:
+    st.session_state["file_path"] = None
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -29,33 +28,30 @@ with st.sidebar:
     st.divider()
     uploaded_file = st.file_uploader("Cargar Imagen", type=["png", "jpg", "jpeg"])
 
-    # --- PROCESAMIENTO BLINDADO ---
+    # --- ESTRATEGIA: GUARDADO FÍSICO EN DISCO ---
     if uploaded_file is not None:
-        current_id = f"{uploaded_file.name}-{c_width}-{c_height}"
-        if st.session_state["file_id"] != current_id:
+        # Creamos un nombre de archivo único basado en las dimensiones
+        temp_filename = f"temp_canvas_bg_{c_width}_{c_height}.png"
+        
+        # Verificamos si ya lo procesamos para no repetir
+        if st.session_state["file_path"] != temp_filename:
             try:
                 uploaded_file.seek(0)
-                # 1. Abrir imagen
                 img_input = Image.open(uploaded_file).convert("RGB")
-                
-                # 2. Redimensionar
                 img_resized = img_input.resize((c_width, c_height))
                 
-                # 3. TRUCO NUCLEAR: Convertir a Numpy y volver a Imagen
-                # Esto rompe cualquier enlace con el archivo temporal corrupto
-                clean_array = np.array(img_resized)
-                img_final = Image.fromarray(clean_array)
+                # GUARDAMOS EL ARCHIVO EN EL SERVIDOR (Esto soluciona el bug de la nube)
+                img_resized.save(temp_filename, format="PNG")
                 
-                # Guardar en sesión
-                st.session_state["bg_image"] = img_final
-                st.session_state["file_id"] = current_id
+                # Guardamos la RUTA, no la imagen en memoria
+                st.session_state["file_path"] = temp_filename
                 
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error guardando archivo: {e}")
 
-    # Preview para confirmar que Python tiene la imagen
-    if st.session_state["bg_image"]:
-        st.image(st.session_state["bg_image"], caption="Memoria OK", use_column_width=True)
+    # Preview leyendo desde el disco para confirmar
+    if st.session_state["file_path"] and os.path.exists(st.session_state["file_path"]):
+        st.image(st.session_state["file_path"], caption="Leído desde Disco OK", use_column_width=True)
 
     st.divider()
     mode = st.radio("Herramienta:", ("point", "rect", "circle"),
@@ -69,22 +65,25 @@ with st.sidebar:
 # --- LIENZO ---
 st.subheader(f"Lienzo ({c_width}x{c_height})")
 
-# Imagen por defecto (Negra) si no hay carga
-if st.session_state["bg_image"]:
-    final_bg = st.session_state["bg_image"]
+# Preparamos la imagen de fondo
+bg_image_obj = None
+if st.session_state["file_path"] and os.path.exists(st.session_state["file_path"]):
+    # Abrimos la imagen fresca desde el disco justo antes de pasarla al canvas
+    bg_image_obj = Image.open(st.session_state["file_path"])
 else:
-    final_bg = Image.new("RGB", (c_width, c_height), (0,0,0))
+    # Fondo negro si no hay imagen
+    bg_image_obj = Image.new("RGB", (c_width, c_height), (0,0,0))
 
-key = f"cv_v12_{st.session_state['file_id']}_{mode}_{st.session_state.get('reset_counter', 0)}"
+key = f"cv_v13_{st.session_state['file_path']}_{mode}_{st.session_state.get('reset_counter', 0)}"
 
 with st.container(border=True):
-    col_c = st.columns([1, 5, 1])[1] # Centrado
+    col_c = st.columns([1, 5, 1])[1]
     with col_c:
         canvas = st_canvas(
             fill_color="rgba(0,0,0,0)",
             stroke_width=stroke if mode != "point" else 5,
             stroke_color=color,
-            background_image=final_bg, # Ahora pasamos la copia limpia
+            background_image=bg_image_obj, # Pasamos el objeto recién abierto
             update_streamlit=True,
             height=c_height,
             width=c_width,
@@ -94,7 +93,7 @@ with st.container(border=True):
             display_toolbar=True 
         )
 
-# --- CÓDIGO ---
+# --- CÓDIGO GENERADO ---
 st.divider()
 st.subheader("Código Generado")
 
