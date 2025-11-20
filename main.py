@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 from PIL import Image
 import os
+import base64
+from io import BytesIO
 from streamlit_drawable_canvas import st_canvas
 
 # --- CONFIGURACIÓN ---
@@ -15,9 +17,17 @@ def hex_to_bgr(hex_color):
     hex = hex_color.lstrip('#')
     return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))[::-1]
 
+# --- FUNCIONES AUXILIARES ---
+def pil_to_base64(img):
+    """Convierte una imagen PIL a base64 string."""
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    return f"data:image/png;base64,{img_str}"
+
 # --- ESTADO DE SESIÓN ---
-if "img_array" not in st.session_state:
-    st.session_state["img_array"] = None
+if "bg_image_pil" not in st.session_state:
+    st.session_state["bg_image_pil"] = None
 if "canvas_dims" not in st.session_state:
     st.session_state["canvas_dims"] = (320, 240)
 
@@ -30,25 +40,25 @@ with st.sidebar:
     st.divider()
     uploaded_file = st.file_uploader("Cargar Imagen", type=["png", "jpg", "jpeg"])
 
-    # --- ESTRATEGIA: GUARDAR ARRAY EN SESSION STATE ---
+    # --- ESTRATEGIA: GUARDAR IMAGEN PIL EN SESSION STATE ---
     if uploaded_file is not None:
         # Verificamos si las dimensiones cambiaron o es una imagen nueva
-        if st.session_state["canvas_dims"] != (c_width, c_height) or st.session_state["img_array"] is None:
+        if st.session_state["canvas_dims"] != (c_width, c_height) or st.session_state["bg_image_pil"] is None:
             try:
                 uploaded_file.seek(0)
                 img_input = Image.open(uploaded_file).convert("RGB")
                 img_resized = img_input.resize((c_width, c_height))
                 
-                # GUARDAMOS EL ARRAY NUMPY en session_state
-                st.session_state["img_array"] = np.array(img_resized)
+                # GUARDAMOS LA IMAGEN PIL en session_state
+                st.session_state["bg_image_pil"] = img_resized
                 st.session_state["canvas_dims"] = (c_width, c_height)
                 
             except Exception as e:
                 st.error(f"Error procesando imagen: {e}")
 
-    # Preview desde el array en memoria
-    if st.session_state["img_array"] is not None:
-        st.image(st.session_state["img_array"], caption="Imagen cargada", use_column_width=True)
+    # Preview desde la imagen PIL en memoria
+    if st.session_state["bg_image_pil"] is not None:
+        st.image(st.session_state["bg_image_pil"], caption="Imagen cargada", use_column_width=True)
 
     st.divider()
     mode = st.radio("Herramienta:", ("point", "rect", "circle"),
@@ -62,16 +72,16 @@ with st.sidebar:
 # --- LIENZO ---
 st.subheader(f"Lienzo ({c_width}x{c_height})")
 
-# Preparamos la imagen de fondo desde el array en session_state
+# Preparamos la imagen de fondo desde session_state
 bg_image_obj = None
-if st.session_state["img_array"] is not None:
-    # Reconstruimos el objeto PIL desde el array numpy
-    bg_image_obj = Image.fromarray(st.session_state["img_array"])
+if st.session_state["bg_image_pil"] is not None:
+    # Usamos directamente la imagen PIL guardada
+    bg_image_obj = st.session_state["bg_image_pil"]
 else:
     # Fondo negro si no hay imagen
     bg_image_obj = Image.new("RGB", (c_width, c_height), (0,0,0))
 
-key = f"cv_v14_{c_width}x{c_height}_{mode}_{st.session_state.get('reset_counter', 0)}"
+key = f"cv_v15_{c_width}x{c_height}_{mode}_{st.session_state.get('reset_counter', 0)}"
 
 with st.container(border=True):
     col_c = st.columns([1, 5, 1])[1]
