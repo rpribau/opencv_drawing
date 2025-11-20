@@ -35,7 +35,7 @@ with st.sidebar:
     # --- ESTRATEGIA: GUARDAR ARRAY EN SESSION STATE ---
     if uploaded_file is not None:
         # Verificamos si las dimensiones cambiaron, es una imagen nueva, o el archivo cambió
-        current_file_id = uploaded_file.file_id
+        current_file_id = getattr(uploaded_file, 'file_id', uploaded_file.name)
         if (st.session_state["canvas_dims"] != (c_width, c_height) or 
             st.session_state["img_array"] is None or
             st.session_state["last_file_id"] != current_file_id):
@@ -77,8 +77,7 @@ st.subheader(f"Lienzo ({c_width}x{c_height})")
 bg_image_obj = None
 if st.session_state["img_array"] is not None:
     # Reconstruimos el objeto PIL desde el array numpy
-    # Usando .copy() para asegurar que sea un objeto fresco y evitar problemas de caché
-    bg_image_obj = Image.fromarray(st.session_state["img_array"].copy())
+    bg_image_obj = Image.fromarray(st.session_state["img_array"])
 else:
     # Fondo negro si no hay imagen
     bg_image_obj = Image.new("RGB", (c_width, c_height), (0,0,0))
