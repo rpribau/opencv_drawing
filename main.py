@@ -2,6 +2,33 @@ import streamlit as st
 import cv2
 import numpy as np
 from PIL import Image
+
+# Monkeypatch to fix AttributeError with newer Streamlit versions
+import streamlit.elements.image
+from streamlit.elements.lib import image_utils
+
+# Save the original function
+original_image_to_url = image_utils.image_to_url
+
+# Define a mock class for LayoutConfig
+class MockLayoutConfig:
+    def __init__(self, width):
+        self.width = width
+
+# Define the wrapper
+def image_to_url_wrapper(image, width, clamp, channels, output_format, image_id):
+    # Check if width is an int (which st_canvas passes)
+    if isinstance(width, int):
+        # Wrap it in the config object expected by new Streamlit
+        config = MockLayoutConfig(width)
+        return original_image_to_url(image, config, clamp, channels, output_format, image_id)
+    else:
+        # If it's not an int, just pass it through (maybe it's already correct)
+        return original_image_to_url(image, width, clamp, channels, output_format, image_id)
+
+# Apply the monkeypatch
+streamlit.elements.image.image_to_url = image_to_url_wrapper
+
 from streamlit_drawable_canvas import st_canvas
 
 # --- Configuración de la página ---
