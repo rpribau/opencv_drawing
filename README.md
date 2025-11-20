@@ -8,7 +8,7 @@ Eres libre de hacer lo que te salga de la mente.
 
 ## Correr en local
 
-Clona el proyecto y corre el ```requirements.txt``` instalando todas las dependencias y ejecuta la siguiente linea en la raiz del proyecto:
+Clona el proyecto y corre el ```requirements.txt``` usando pip, instalando todas las dependencias y ejecuta la siguiente linea en la raiz del proyecto:
 
 ```
 streamlit run main.py
