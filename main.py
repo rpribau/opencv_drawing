@@ -14,8 +14,7 @@ def hex_to_bgr(hex_color):
     hex = hex_color.lstrip('#')
     return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))[::-1]
 
-# --- ESTADO DE SESIÓN (Memoria) ---
-# Inicializamos variables para guardar la imagen y que no se borre al interactuar
+# --- ESTADO DE SESIÓN ---
 if "bg_image" not in st.session_state:
     st.session_state["bg_image"] = None
 if "file_id" not in st.session_state:
@@ -23,76 +22,69 @@ if "file_id" not in st.session_state:
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    st.header("1. Configuración")
-    
-    # Dimensiones
-    c_width = st.number_input("Ancho (px):", 100, 3000, 320, 10)
-    c_height = st.number_input("Alto (px):", 100, 3000, 240, 10)
+    st.header("Configuración")
+    c_width = st.number_input("Ancho:", 100, 3000, 320, 10)
+    c_height = st.number_input("Alto:", 100, 3000, 240, 10)
     
     st.divider()
-    
     uploaded_file = st.file_uploader("Cargar Imagen", type=["png", "jpg", "jpeg"])
 
-    # --- LÓGICA DE PROCESAMIENTO DE IMAGEN (SOLO UNA VEZ) ---
+    # --- PROCESAMIENTO BLINDADO ---
     if uploaded_file is not None:
-        # Si es un archivo nuevo o cambiaron las dimensiones, procesamos
         current_id = f"{uploaded_file.name}-{c_width}-{c_height}"
-        
         if st.session_state["file_id"] != current_id:
             try:
-                # Reiniciamos el puntero del archivo por seguridad
                 uploaded_file.seek(0)
-                
-                # 1. Abrir y convertir a RGB (Crucial para Web/Linux)
-                img_pil = Image.open(uploaded_file).convert("RGB")
+                # 1. Abrir imagen
+                img_input = Image.open(uploaded_file).convert("RGB")
                 
                 # 2. Redimensionar
-                img_resized = img_pil.resize((c_width, c_height))
+                img_resized = img_input.resize((c_width, c_height))
                 
-                # 3. Guardar en memoria persistente
-                st.session_state["bg_image"] = img_resized
+                # 3. TRUCO NUCLEAR: Convertir a Numpy y volver a Imagen
+                # Esto rompe cualquier enlace con el archivo temporal corrupto
+                clean_array = np.array(img_resized)
+                img_final = Image.fromarray(clean_array)
+                
+                # Guardar en sesión
+                st.session_state["bg_image"] = img_final
                 st.session_state["file_id"] = current_id
                 
             except Exception as e:
-                st.error(f"Error procesando imagen: {e}")
-    
-    # --- VISUALIZACIÓN DE DEBUG ---
-    # Esto nos confirma si Python tiene la imagen en memoria, aunque el lienzo falle
-    if st.session_state["bg_image"] is not None:
-        st.image(st.session_state["bg_image"], caption="Vista Previa (Memoria OK)", use_column_width=True)
+                st.error(f"Error: {e}")
+
+    # Preview para confirmar que Python tiene la imagen
+    if st.session_state["bg_image"]:
+        st.image(st.session_state["bg_image"], caption="Memoria OK", use_column_width=True)
 
     st.divider()
-    
-    mode = st.radio("Herramienta:", 
-             ("point", "rect", "circle"),
+    mode = st.radio("Herramienta:", ("point", "rect", "circle"),
              format_func=lambda x: {"point": "📍 Puntos", "rect": "⬜ Rectángulo", "circle": "⭕ Círculo"}.get(x))
-    
     color = st.color_picker("Color", "#00FF00")
     stroke = st.slider("Grosor", 1, 5, 2)
     
-    if st.button("🗑️ Limpiar dibujos"):
+    if st.button("🗑️ Limpiar"):
         st.session_state["reset_counter"] = st.session_state.get("reset_counter", 0) + 1
 
-# --- LIENZO PRINCIPAL ---
-
+# --- LIENZO ---
 st.subheader(f"Lienzo ({c_width}x{c_height})")
 
-# Preparamos la imagen de fondo. Si no hay, usamos una negra.
-final_bg = st.session_state["bg_image"] if st.session_state["bg_image"] else Image.new("RGB", (c_width, c_height), (0,0,0))
-img_name_key = st.session_state["file_id"] if st.session_state["file_id"] else "default"
+# Imagen por defecto (Negra) si no hay carga
+if st.session_state["bg_image"]:
+    final_bg = st.session_state["bg_image"]
+else:
+    final_bg = Image.new("RGB", (c_width, c_height), (0,0,0))
 
-# Key única para forzar redibujado si cambia algo importante
-key = f"cv_v11_{img_name_key}_{mode}_{st.session_state.get('reset_counter', 0)}"
+key = f"cv_v12_{st.session_state['file_id']}_{mode}_{st.session_state.get('reset_counter', 0)}"
 
 with st.container(border=True):
-    # Centrado visual
-    col_l, col_c, col_r = st.columns([1, 3, 1])
+    col_c = st.columns([1, 5, 1])[1] # Centrado
     with col_c:
         canvas = st_canvas(
             fill_color="rgba(0,0,0,0)",
             stroke_width=stroke if mode != "point" else 5,
             stroke_color=color,
-            background_image=final_bg, # Pasamos la imagen desde memoria
+            background_image=final_bg, # Ahora pasamos la copia limpia
             update_streamlit=True,
             height=c_height,
             width=c_width,
@@ -102,7 +94,7 @@ with st.container(border=True):
             display_toolbar=True 
         )
 
-# --- CÓDIGO GENERADO ---
+# --- CÓDIGO ---
 st.divider()
 st.subheader("Código Generado")
 
@@ -121,11 +113,8 @@ if canvas.json_data and canvas.json_data["objects"]:
                 x2, y2 = int(p2["left"]+p2["radius"]), int(p2["top"]+p2["radius"])
                 code += f"cv2.line(img, ({x1}, {y1}), ({x2}, {y2}), {color_bgr}, {stroke})\n"
             st.code(code, language="python")
-        elif len(points) == 1:
-            st.info("📍 Haz click en el segundo punto.")
-        else:
-            st.info("Haz click para marcar.")
-
+        elif len(points) == 1: st.info("📍 Marca el destino.")
+        else: st.info("Marca puntos.")
     else:
         code = ""
         for obj in objects:
@@ -133,7 +122,7 @@ if canvas.json_data and canvas.json_data["objects"]:
                 x1, y1 = int(obj["left"]), int(obj["top"])
                 x2, y2 = int(x1 + obj["width"]), int(y1 + obj["height"])
                 code += f"cv2.rectangle(img, ({x1}, {y1}), ({x2}, {y2}), {color_bgr}, {stroke})\n"
-            elif obj["type"] == "circle" and mode == "circle":
+            elif obj["type"] == "circle":
                 cx, cy = int(obj["left"]+obj["radius"]), int(obj["top"]+obj["radius"])
                 r = int(obj["radius"])
                 code += f"cv2.circle(img, ({cx}, {cy}), {r}, {color_bgr}, {stroke})\n"
