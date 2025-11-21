@@ -9,8 +9,11 @@ Eres libre de hacer lo que te salga de la mente.
 ## 🤗 Pruebalo en HuggingFace
 
 <p align="center">
-  <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQrN3o7p4BRmIehLT1Wljis5osd3NMGkbaXed5cipLSyXfuhbnLDZU7GWVZpogtoOoeVQ&usqp=CAU" width="250">
+  <a href="https://huggingface.co/spaces/rpribau/opencv_drawing" target="_blank">
+    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQrN3o7p4BRmIehLT1Wljis5osd3NMGkbaXed5cipLSyXfuhbnLDZU7GWVZpogtoOoeVQ&usqp=CAU" width="250">
+  </a>
 </p>
+
 
 ## 💻 Pruebalo en Local 
 
