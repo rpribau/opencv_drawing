@@ -17,19 +17,11 @@ def hex_to_bgr(hex_color):
     hex = hex_color.lstrip('#')
     return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))[::-1]
 
-# --- FUNCIONES AUXILIARES ---
-def pil_to_base64(img):
-    """Convierte una imagen PIL a base64 string."""
-    buffered = BytesIO()
-    img.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode()
-    return f"data:image/png;base64,{img_str}"
-
 # --- ESTADO DE SESIÓN ---
-if "bg_image_pil" not in st.session_state:
-    st.session_state["bg_image_pil"] = None
-if "canvas_dims" not in st.session_state:
-    st.session_state["canvas_dims"] = (320, 240)
+if "bg_image" not in st.session_state:
+    st.session_state["bg_image"] = None
+if "file_id" not in st.session_state:
+    st.session_state["file_id"] = ""
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -40,25 +32,36 @@ with st.sidebar:
     st.divider()
     uploaded_file = st.file_uploader("Cargar Imagen", type=["png", "jpg", "jpeg"])
 
-    # --- ESTRATEGIA: GUARDAR IMAGEN PIL EN SESSION STATE ---
+    # --- PROCESAMIENTO ---
     if uploaded_file is not None:
-        # Verificamos si las dimensiones cambiaron o es una imagen nueva
-        if st.session_state["canvas_dims"] != (c_width, c_height) or st.session_state["bg_image_pil"] is None:
+        current_id = f"{uploaded_file.name}-{c_width}-{c_height}"
+        
+        # Solo procesamos si cambió el archivo o el tamaño
+        if st.session_state["file_id"] != current_id:
             try:
+                # Reset del puntero
                 uploaded_file.seek(0)
+                
+                # 1. Cargar y convertir
                 img_input = Image.open(uploaded_file).convert("RGB")
+                
+                # 2. Resize
                 img_resized = img_input.resize((c_width, c_height))
                 
-                # GUARDAMOS LA IMAGEN PIL en session_state
-                st.session_state["bg_image_pil"] = img_resized
-                st.session_state["canvas_dims"] = (c_width, c_height)
+                # 3. Limpieza profunda (Numpy -> Image) para romper referencias
+                clean_array = np.array(img_resized)
+                img_final = Image.fromarray(clean_array)
+                
+                # Guardar en sesión
+                st.session_state["bg_image"] = img_final
+                st.session_state["file_id"] = current_id
                 
             except Exception as e:
-                st.error(f"Error procesando imagen: {e}")
+                st.error(f"Error: {e}")
 
-    # Preview desde la imagen PIL en memoria
-    if st.session_state["bg_image_pil"] is not None:
-        st.image(st.session_state["bg_image_pil"], caption="Imagen cargada", use_column_width=True)
+    # Preview
+    if st.session_state["bg_image"]:
+        st.image(st.session_state["bg_image"], caption="Cargada OK", use_column_width=True)
 
     st.divider()
     mode = st.radio("Herramienta:", ("point", "rect", "circle"),
@@ -72,25 +75,22 @@ with st.sidebar:
 # --- LIENZO ---
 st.subheader(f"Lienzo ({c_width}x{c_height})")
 
-# Preparamos la imagen de fondo desde session_state
-bg_image_obj = None
-if st.session_state["bg_image_pil"] is not None:
-    # Usamos directamente la imagen PIL guardada
-    bg_image_obj = st.session_state["bg_image_pil"]
+if st.session_state["bg_image"]:
+    final_bg = st.session_state["bg_image"]
 else:
-    # Fondo negro si no hay imagen
-    bg_image_obj = Image.new("RGB", (c_width, c_height), (0,0,0))
+    final_bg = Image.new("RGB", (c_width, c_height), (0,0,0))
 
-key = f"cv_v15_{c_width}x{c_height}_{mode}_{st.session_state.get('reset_counter', 0)}"
+key = f"hf_{st.session_state['file_id']}_{mode}_{st.session_state.get('reset_counter', 0)}"
 
 with st.container(border=True):
+    # Columnas para centrar
     col_c = st.columns([1, 5, 1])[1]
     with col_c:
         canvas = st_canvas(
             fill_color="rgba(0,0,0,0)",
             stroke_width=stroke if mode != "point" else 5,
             stroke_color=color,
-            background_image=bg_image_obj,
+            background_image=final_bg,
             update_streamlit=True,
             height=c_height,
             width=c_width,
@@ -100,7 +100,7 @@ with st.container(border=True):
             display_toolbar=True 
         )
 
-# --- CÓDIGO GENERADO ---
+# --- CÓDIGO ---
 st.divider()
 st.subheader("Código Generado")
 
@@ -120,7 +120,6 @@ if canvas.json_data and canvas.json_data["objects"]:
                 code += f"cv2.line(img, ({x1}, {y1}), ({x2}, {y2}), {color_bgr}, {stroke})\n"
             st.code(code, language="python")
         elif len(points) == 1: st.info("📍 Marca el destino.")
-        else: st.info("Marca puntos.")
     else:
         code = ""
         for obj in objects:
